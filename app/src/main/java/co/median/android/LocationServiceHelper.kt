@@ -19,15 +19,21 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.gms.location.Priority
 
-class LocationServiceHelper(val activity: Activity) {
+class LocationServiceHelper(private val activity: Activity) {
+
     private val defaultRequestLocationInterval = 1000L // 1 sec
     var callback: Callback? = null
 
     private val requestLocationPermissionsLauncher =
-        (activity as ComponentActivity).registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-            val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        (activity as ComponentActivity).registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+
+            val fineLocationGranted =
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
             val coarseLocationGranted =
                 permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
             if (fineLocationGranted && coarseLocationGranted) {
                 promptLocationService()
             } else {
@@ -36,7 +42,10 @@ class LocationServiceHelper(val activity: Activity) {
         }
 
     private val requestEnableLocationLauncher =
-        (activity as ComponentActivity).registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        (activity as ComponentActivity).registerForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult()
+        ) { result ->
+
             if (result.resultCode == RESULT_OK) {
                 callback?.onResult(true)
             } else {
@@ -50,13 +59,12 @@ class LocationServiceHelper(val activity: Activity) {
     }
 
     fun promptLocationService() {
-        // check location permissions
+
+        // 1. Check permissions first
         if (!isLocationPermissionGranted()) {
 
-            // shows rationale message if needed
             showRequestPermissionRationale()
 
-            // prompt permission request
             requestLocationPermissionsLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -66,63 +74,79 @@ class LocationServiceHelper(val activity: Activity) {
             return
         }
 
-        // request location service
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, defaultRequestLocationInterval)
+        // 2. Build modern LocationRequest (FIXED API)
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            defaultRequestLocationInterval
+        )
+            .setMinUpdateIntervalMillis(5000)
             .build()
 
-        val builder = LocationSettingsRequest.Builder()
-            .addLocationRequest(locationRequest)
+        val locationSettingsRequest =
+            LocationSettingsRequest.Builder()
+                .addLocationRequest(locationRequest)
+                .build()
 
         val client = LocationServices.getSettingsClient(activity)
-        val task = client.checkLocationSettings(builder.build())
+        val task = client.checkLocationSettings(locationSettingsRequest)
 
         task.addOnSuccessListener {
-            // already enabled
+            // Location already enabled
             callback?.onResult(true)
         }
 
         task.addOnFailureListener { e ->
             if (e is ResolvableApiException) {
-                // prompt user to enable location service
-                val intentSenderRequest = IntentSenderRequest.Builder(e.resolution).build()
+
+                val intentSenderRequest =
+                    IntentSenderRequest.Builder(e.resolution).build()
+
                 requestEnableLocationLauncher.launch(intentSenderRequest)
+            } else {
+                callback?.onResult(false)
             }
         }
     }
 
     fun isLocationServiceEnabled(): Boolean {
-        if (!isLocationPermissionGranted()) {
-            return false
-        }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val lm: LocationManager = activity.getSystemService(LocationManager::class.java)
-            return lm.isLocationEnabled
+        if (!isLocationPermissionGranted()) return false
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val lm = activity.getSystemService(LocationManager::class.java)
+            lm.isLocationEnabled
         } else {
-            // This is Deprecated in API 28
             val mode = Settings.Secure.getInt(
                 activity.contentResolver,
                 Settings.Secure.LOCATION_MODE,
                 Settings.Secure.LOCATION_MODE_OFF
             )
-            return (mode != Settings.Secure.LOCATION_MODE_OFF)
+            mode != Settings.Secure.LOCATION_MODE_OFF
         }
     }
 
     private fun isLocationPermissionGranted(): Boolean {
-        val checkFine =
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION)
-        val checkCoarse =
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION)
-        return checkFine == PackageManager.PERMISSION_GRANTED && checkCoarse == PackageManager.PERMISSION_GRANTED
+        val fine = ContextCompat.checkSelfPermission(
+            activity,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        val coarse = ContextCompat.checkSelfPermission(
+            activity,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+
+        return fine == PackageManager.PERMISSION_GRANTED &&
+                coarse == PackageManager.PERMISSION_GRANTED
     }
 
     private fun showRequestPermissionRationale() {
-        if (ActivityCompat.shouldShowRequestPermissionRationale(
+        if (
+            ActivityCompat.shouldShowRequestPermissionRationale(
                 activity,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            )
-            || ActivityCompat.shouldShowRequestPermissionRationale(
+            ) ||
+            ActivityCompat.shouldShowRequestPermissionRationale(
                 activity,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
