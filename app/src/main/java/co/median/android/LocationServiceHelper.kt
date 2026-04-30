@@ -14,10 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.common.api.ResolvableApiException
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationSettingsRequest
-import com.google.android.gms.location.Priority
+import com.google.android.gms.location.*
 
 class LocationServiceHelper(private val activity: Activity) {
 
@@ -60,9 +57,8 @@ class LocationServiceHelper(private val activity: Activity) {
 
     fun promptLocationService() {
 
-        // 1. Check permissions first
+        // 1. Permission check
         if (!isLocationPermissionGranted()) {
-
             showRequestPermissionRationale()
 
             requestLocationPermissionsLauncher.launch(
@@ -74,11 +70,9 @@ class LocationServiceHelper(private val activity: Activity) {
             return
         }
 
-        // 2. Build modern LocationRequest (FIXED API)
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            defaultRequestLocationInterval
-        )
+        // 2. Build LocationRequest (CI-safe modern API)
+        val locationRequest = LocationRequest.Builder(1000L)
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
             .setMinUpdateIntervalMillis(5000)
             .build()
 
@@ -91,7 +85,6 @@ class LocationServiceHelper(private val activity: Activity) {
         val task = client.checkLocationSettings(locationSettingsRequest)
 
         task.addOnSuccessListener {
-            // Location already enabled
             callback?.onResult(true)
         }
 
@@ -102,6 +95,7 @@ class LocationServiceHelper(private val activity: Activity) {
                     IntentSenderRequest.Builder(e.resolution).build()
 
                 requestEnableLocationLauncher.launch(intentSenderRequest)
+
             } else {
                 callback?.onResult(false)
             }
